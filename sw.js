@@ -1,10 +1,12 @@
-const CACHE_NAME = 'sydenham-departures-v1';
+const CACHE_NAME = 'sydenham-departures-v2';
+// Resolve against sw.js URL so this works at repo root OR GitHub Pages project paths (/Sydenham/).
+const base = new URL('.', self.location).href;
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  'icon-192.png',
-  'icon-512.png'
+  base,
+  new URL('index.html', self.location).href,
+  new URL('manifest.json', self.location).href,
+  new URL('icon-192.png', self.location).href,
+  new URL('icon-512.png', self.location).href
 ];
 
 self.addEventListener('install', event => {
