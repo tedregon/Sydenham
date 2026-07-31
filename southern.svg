@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="Southern">
+  <!-- Southern roundel mark (no text) -->
+  <circle cx="8" cy="8" r="6.4" fill="#7BA8A1"/>
+  <rect x="0" y="5.85" width="16" height="4.3" fill="#004D44"/>
+  <rect x="3.2" y="7.2" width="9.6" height="1.6" rx="0.3" fill="#FCE300"/>
+</svg>

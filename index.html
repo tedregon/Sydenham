@@ -29,7 +29,7 @@
         .departure {
             padding: 10px 0;
             border-bottom: 1px solid #444444;
-            width: 340px;
+            width: 360px;
             height: 16px;
             text-align: left;
             overflow: hidden;
@@ -41,6 +41,18 @@
             float: left;
             position: relative;
             white-space: nowrap;
+        }
+        .operator {
+            width: 22px;
+            display: inline-block;
+            float: left;
+            line-height: 16px;
+        }
+        .operator img {
+            width: 16px;
+            height: 16px;
+            display: block;
+            vertical-align: top;
         }
         .time {
             width: 48px;
@@ -88,6 +100,10 @@
         const departuresContainer = document.getElementById('departures');
         const TFL_ARRIVALS_URL = 'https://api.tfl.gov.uk/StopPoint/910GSYDENHM/Arrivals?lineId=windrush';
         const NATIONAL_RAIL_URL = 'https://national-rail-api.davwheat.dev/departures/SYD/20';
+        const OPERATOR_ICONS = {
+            overground: { src: 'overground.svg', alt: 'Overground' },
+            southern: { src: 'southern.svg', alt: 'Southern' }
+        };
 
         async function fetchDepartures() {
             const [overgroundResult, southernResult] = await Promise.allSettled([
@@ -116,6 +132,7 @@
             return data
                 .filter(departure => (departure.lineId || '').toLowerCase() === 'windrush')
                 .map(departure => ({
+                    operator: 'overground',
                     platform: formatPlatform(departure.platformName),
                     destination: cleanDestination(departure.destinationName),
                     expectedArrival: new Date(departure.expectedArrival),
@@ -139,6 +156,7 @@
                     const expectedArrival = cancelled ? null : parseBoardTime(service.etd, service.std);
 
                     return {
+                        operator: 'southern',
                         platform: formatPlatform(service.platform),
                         destination: cleanDestination(service.destination?.[0]?.locationName),
                         expectedArrival,
@@ -165,8 +183,10 @@
 
             departuresContainer.innerHTML = sorted.map(departure => {
                 const timeLeft = formatTimeLeft(departure);
+                const icon = OPERATOR_ICONS[departure.operator];
                 return `<div class="departure">
                             <div class="platform">${departure.platform}</div>
+                            <div class="operator"><img src="${icon.src}" width="16" height="16" alt="${icon.alt}"></div>
                             <div class="time">${timeLeft}</div>
                             <div class="destination">${departure.destination}</div>
                         </div>`;
