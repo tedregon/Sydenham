@@ -9,11 +9,11 @@ It also registers a **service worker** (`sw.js`) to cache basic assets for offli
 
 ## What it displays
 
-- Two sections: **Overground** and **Southern**
+- A single departure list mixing **Overground** and **Southern**, sorted by expected departure time
 - Overground: all Windrush arrivals at `910GSYDENHM` (inbound and outbound)
 - Southern: National Rail departures at CRS `SYD` operated by Southern (`SN`)
-- Sorts each list by expected departure time
-- Shows time remaining in minutes (e.g. `3 min`), `Due`, `Cancelled`, or `Delayed`
+- Each row shows platform (`P1` / `P2`), countdown, and destination
+- Countdown shows minutes remaining (e.g. `3 min`), `Due`, `Cancelled`, or `Delayed`
 - Refreshes the departures list every **60 seconds**
 
 ## Configuration

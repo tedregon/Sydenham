@@ -22,20 +22,21 @@
             width: 100%;
             text-align: center;
         }
-        h4 {
-            margin: 18px 0 8px;
-            color: #ffffff;
-            font-weight: normal;
-            border-bottom: 1px solid #444444;
-            padding-bottom: 4px;
-        }
         .departure {
             padding: 10px 0;
             border-bottom: 1px solid #444444;
-            width: 320px;
+            width: 340px;
             height: 16px;
             text-align: left;
             overflow: hidden;
+        }
+        .platform {
+            width: 28px;
+            display: inline-block;
+            color: #ffffff;
+            float: left;
+            position: relative;
+            white-space: nowrap;
         }
         .time {
             width: 72px;
@@ -46,7 +47,7 @@
             white-space: nowrap;
         }
         .destination {
-            max-width: 248px;
+            max-width: 240px;
             display: inline-block;
             float: left;
             text-overflow: ellipsis;
@@ -90,15 +91,15 @@
                 fetchSouthernDepartures()
             ]);
 
-            const overground = overgroundResult.status === 'fulfilled' ? overgroundResult.value : null;
-            const southern = southernResult.status === 'fulfilled' ? southernResult.value : null;
+            const overground = overgroundResult.status === 'fulfilled' ? overgroundResult.value : [];
+            const southern = southernResult.status === 'fulfilled' ? southernResult.value : [];
 
-            if (!overground && !southern) {
+            if (overgroundResult.status === 'rejected' && southernResult.status === 'rejected') {
                 departuresContainer.innerHTML = `<p class="error">Error fetching departure data. Please try again later.</p>`;
                 return;
             }
 
-            displayDepartures(overground, southern);
+            displayDepartures([...overground, ...southern]);
         }
 
         async function fetchOvergroundDepartures() {
@@ -111,11 +112,11 @@
             return data
                 .filter(departure => (departure.lineId || '').toLowerCase() === 'windrush')
                 .map(departure => ({
+                    platform: formatPlatform(departure.platformName),
                     destination: cleanDestination(departure.destinationName),
                     expectedArrival: new Date(departure.expectedArrival),
                     cancelled: false
-                }))
-                .sort((a, b) => a.expectedArrival - b.expectedArrival);
+                }));
         }
 
         async function fetchSouthernDepartures() {
@@ -134,47 +135,47 @@
                     const expectedArrival = cancelled ? null : parseBoardTime(service.etd, service.std);
 
                     return {
+                        platform: formatPlatform(service.platform),
                         destination: cleanDestination(service.destination?.[0]?.locationName),
                         expectedArrival,
                         cancelled,
                         delayed: service.etd === 'Delayed'
                     };
                 })
-                .filter(service => service.destination)
-                .sort((a, b) => {
-                    if (a.cancelled && !b.cancelled) return 1;
-                    if (!a.cancelled && b.cancelled) return -1;
-                    if (!a.expectedArrival) return 1;
-                    if (!b.expectedArrival) return -1;
-                    return a.expectedArrival - b.expectedArrival;
-                });
+                .filter(service => service.destination);
         }
 
-        function displayDepartures(overground, southern) {
-            departuresContainer.innerHTML = [
-                renderSection('Overground', overground),
-                renderSection('Southern', southern)
-            ].join('');
-        }
-
-        function renderSection(title, departures) {
-            if (!departures) {
-                return `<h4>${title}</h4><p class="empty error">Unable to load ${title.toLowerCase()} departures.</p>`;
-            }
-
+        function displayDepartures(departures) {
             if (departures.length === 0) {
-                return `<h4>${title}</h4><p class="empty">No ${title.toLowerCase()} departures.</p>`;
+                departuresContainer.innerHTML = '<p class="empty">No departures.</p>';
+                return;
             }
 
-            const rows = departures.map(departure => {
+            const sorted = departures.slice().sort((a, b) => {
+                if (a.cancelled && !b.cancelled) return 1;
+                if (!a.cancelled && b.cancelled) return -1;
+                if (!a.expectedArrival) return 1;
+                if (!b.expectedArrival) return -1;
+                return a.expectedArrival - b.expectedArrival;
+            });
+
+            departuresContainer.innerHTML = sorted.map(departure => {
                 const timeLeft = formatTimeLeft(departure);
                 return `<div class="departure">
+                            <div class="platform">${departure.platform}</div>
                             <div class="time">${timeLeft}</div>
                             <div class="destination">${departure.destination}</div>
                         </div>`;
             }).join('');
+        }
 
-            return `<h4>${title}</h4>${rows}`;
+        function formatPlatform(platform) {
+            if (platform === null || platform === undefined || platform === '') {
+                return '—';
+            }
+
+            const match = String(platform).match(/(\d+)/);
+            return match ? `P${match[1]}` : '—';
         }
 
         function formatTimeLeft(departure) {
