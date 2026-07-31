@@ -18,28 +18,60 @@
             color: orange;
             background-color: #272727;
         }
+        h3 {
+            width: 100%;
+            text-align: center;
+        }
         h4 {
-            margin: 10px 0;
+            margin: 18px 0 8px;
+            color: #ffffff;
+            font-weight: normal;
+            border-bottom: 1px solid #444444;
+            padding-bottom: 4px;
         }
         .departure {
             padding: 10px 0;
             border-bottom: 1px solid #444444;
+            width: 320px;
+            height: 16px;
+            text-align: left;
+            overflow: hidden;
+        }
+        .time {
+            width: 72px;
+            display: inline-block;
+            color: #ffffff;
+            float: left;
+            position: relative;
+            white-space: nowrap;
+        }
+        .destination {
+            max-width: 248px;
+            display: inline-block;
+            float: left;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            position: relative;
+            white-space: nowrap;
+        }
+        .empty, .error {
+            margin: 8px 0;
         }
         .error {
             color: red;
             text-align: center;
         }
     </style>
-<script defer data-domain="sydenham-station.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script><script defer data-domain="sydenham-station.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script></head>
+<script defer data-domain="sydenham-station.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script></head>
 <body style="max-width: 100%; margin: 0 auto; padding: 0 20px;">
-    <h3 style="width:100%; text-align: center;">Sydenham Station</h3>
+    <h3>Sydenham Station</h3>
     <div id="departures">Loading...</div>
 
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js', { scope: './' })
-                    .then(registration => {
+                    .then(() => {
                         console.log('ServiceWorker registration successful');
                     })
                     .catch(err => {
@@ -49,57 +81,139 @@
         }
 
         const departuresContainer = document.getElementById('departures');
+        const TFL_ARRIVALS_URL = 'https://api.tfl.gov.uk/StopPoint/910GSYDENHM/Arrivals?lineId=windrush';
+        const NATIONAL_RAIL_URL = 'https://national-rail-api.davwheat.dev/departures/SYD/20';
 
         async function fetchDepartures() {
-            try {
-                const response = await fetch('https://api.tfl.gov.uk/StopPoint/910GSYDENHM/Arrivals?lineId=windrush');
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                const data = await response.json();
-                displayDepartures(data);
-            } catch (error) {
+            const [overgroundResult, southernResult] = await Promise.allSettled([
+                fetchOvergroundDepartures(),
+                fetchSouthernDepartures()
+            ]);
+
+            const overground = overgroundResult.status === 'fulfilled' ? overgroundResult.value : null;
+            const southern = southernResult.status === 'fulfilled' ? southernResult.value : null;
+
+            if (!overground && !southern) {
                 departuresContainer.innerHTML = `<p class="error">Error fetching departure data. Please try again later.</p>`;
-            }
-        }
-
-        function displayDepartures(departures) {
-            const inboundTrains = departures.filter(departure => 
-                departure.direction && departure.direction.toLowerCase() === 'inbound'
-            );
-
-            if (inboundTrains.length === 0) {
-                departuresContainer.innerHTML = '<p>No inbound trains.</p>';
                 return;
             }
 
-            inboundTrains.sort((a, b) => new Date(a.expectedArrival) - new Date(b.expectedArrival));
+            displayDepartures(overground, southern);
+        }
 
-            const departureList = inboundTrains.map(departure => {
-                const destination = departure.destinationName;
-                const platform = departure.platformName || 'N/A';
-                const timeLeft = getTimeLeft(new Date(departure.expectedArrival));
-                
-                return `<div class="departure" style="width: 320px; height: 16px; text-align: left;">
-                            <div style="width: 64px; display:inline-block; color: #ffffff; float:left;position: relative; white-space: nowrap;"> ${timeLeft}</div> 
-                            <div style="max-width: 256px; display:inline-block;float:left; text-overflow: ellipsis; overflow: hidden;position: relative; white-space: nowrap;">${destination}</div>                            
+        async function fetchOvergroundDepartures() {
+            const response = await fetch(TFL_ARRIVALS_URL);
+            if (!response.ok) {
+                throw new Error('TfL response was not ok');
+            }
+
+            const data = await response.json();
+            return data
+                .filter(departure => (departure.lineId || '').toLowerCase() === 'windrush')
+                .map(departure => ({
+                    destination: cleanDestination(departure.destinationName),
+                    expectedArrival: new Date(departure.expectedArrival),
+                    cancelled: false
+                }))
+                .sort((a, b) => a.expectedArrival - b.expectedArrival);
+        }
+
+        async function fetchSouthernDepartures() {
+            const response = await fetch(NATIONAL_RAIL_URL);
+            if (!response.ok) {
+                throw new Error('National Rail response was not ok');
+            }
+
+            const data = await response.json();
+            const services = data.trainServices || [];
+
+            return services
+                .filter(service => service.operatorCode === 'SN')
+                .map(service => {
+                    const cancelled = Boolean(service.isCancelled) || service.etd === 'Cancelled';
+                    const expectedArrival = cancelled ? null : parseBoardTime(service.etd, service.std);
+
+                    return {
+                        destination: cleanDestination(service.destination?.[0]?.locationName),
+                        expectedArrival,
+                        cancelled,
+                        delayed: service.etd === 'Delayed'
+                    };
+                })
+                .filter(service => service.destination)
+                .sort((a, b) => {
+                    if (a.cancelled && !b.cancelled) return 1;
+                    if (!a.cancelled && b.cancelled) return -1;
+                    if (!a.expectedArrival) return 1;
+                    if (!b.expectedArrival) return -1;
+                    return a.expectedArrival - b.expectedArrival;
+                });
+        }
+
+        function displayDepartures(overground, southern) {
+            departuresContainer.innerHTML = [
+                renderSection('Overground', overground),
+                renderSection('Southern', southern)
+            ].join('');
+        }
+
+        function renderSection(title, departures) {
+            if (!departures) {
+                return `<h4>${title}</h4><p class="empty error">Unable to load ${title.toLowerCase()} departures.</p>`;
+            }
+
+            if (departures.length === 0) {
+                return `<h4>${title}</h4><p class="empty">No ${title.toLowerCase()} departures.</p>`;
+            }
+
+            const rows = departures.map(departure => {
+                const timeLeft = formatTimeLeft(departure);
+                return `<div class="departure">
+                            <div class="time">${timeLeft}</div>
+                            <div class="destination">${departure.destination}</div>
                         </div>`;
             }).join('');
 
-            departuresContainer.innerHTML = departureList;
+            return `<h4>${title}</h4>${rows}`;
         }
 
-        function getTimeLeft(departureTime) {
-            const now = new Date();
-            const diffMs = departureTime - now;
-            const diffMin = Math.floor(diffMs / 60000);
+        function formatTimeLeft(departure) {
+            if (departure.cancelled) return 'Cancelled';
+            if (departure.delayed && !departure.expectedArrival) return 'Delayed';
+            if (!departure.expectedArrival) return '—';
 
-            if (diffMin <= 0) return "Due";
+            const diffMin = Math.floor((departure.expectedArrival - new Date()) / 60000);
+            if (diffMin <= 0) return 'Due';
             return `${diffMin} min`;
         }
 
+        function parseBoardTime(etd, std) {
+            const time = etd && /^\d{2}:\d{2}$/.test(etd) ? etd : std;
+            if (!time || !/^\d{2}:\d{2}$/.test(time)) {
+                return null;
+            }
+
+            const [hours, minutes] = time.split(':').map(Number);
+            const expected = new Date();
+            expected.setSeconds(0, 0);
+            expected.setHours(hours, minutes, 0, 0);
+
+            // After midnight, board times near 00:xx should roll to the next day.
+            const now = new Date();
+            if (expected.getTime() < now.getTime() - 30 * 60000) {
+                expected.setDate(expected.getDate() + 1);
+            }
+
+            return expected;
+        }
+
+        function cleanDestination(name) {
+            if (!name) return '';
+            return name.replace(/\s+Rail Station$/i, '');
+        }
+
         fetchDepartures();
-        setInterval(fetchDepartures, 60000); // Refresh every 60 seconds
+        setInterval(fetchDepartures, 60000);
     </script>
 </body>
 </html>

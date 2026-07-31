@@ -1,24 +1,29 @@
 # Sydenham Station Departures
 
-Simple static web app that shows **live inbound departures** for **Sydenham Station** by fetching data from the **TfL (Transport for London) Unified API**.
+Simple static web app that shows **live departures** for **Sydenham Station**:
+
+- **Overground (Windrush)** — both directions, via the **TfL Unified API**
+- **Southern** — both directions, via a **National Rail (Darwin)** JSON proxy
 
 It also registers a **service worker** (`sw.js`) to cache basic assets for offline/slow-network use (PWA-style).
 
 ## What it displays
 
-- Filters arrivals to only those whose `direction` is `inbound`
-- Sorts by `expectedArrival`
-- Shows time remaining in minutes (e.g. `3 min`) or `Due` if the departure time has passed
+- Two sections: **Overground** and **Southern**
+- Overground: all Windrush arrivals at `910GSYDENHM` (inbound and outbound)
+- Southern: National Rail departures at CRS `SYD` operated by Southern (`SN`)
+- Sorts each list by expected departure time
+- Shows time remaining in minutes (e.g. `3 min`), `Due`, `Cancelled`, or `Delayed`
 - Refreshes the departures list every **60 seconds**
 
 ## Configuration
 
-The data source is configured in `index.html` inside the `fetchDepartures()` function:
+Data sources are configured in `index.html` inside the fetch helpers:
 
-- `stopPoint` (currently `910GSYDENHM`)
-- `lineId` (currently `windrush`)
+- TfL stop point: `910GSYDENHM` (Overground / Windrush)
+- National Rail CRS: `SYD` (Southern), via `https://national-rail-api.davwheat.dev/`
 
-If you need a different stop or line, update the fetch URL in `index.html`.
+If you need a different stop or operator, update the fetch URLs / filters in `index.html`.
 
 ## Local development / running
 
