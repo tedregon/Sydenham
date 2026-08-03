@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sydenham-departures-v8';
+const CACHE_NAME = 'sydenham-departures-v11';
 // Resolve against sw.js URL so this works at repo root OR GitHub Pages project paths (/Sydenham/).
 const base = new URL('.', self.location).href;
 const urlsToCache = [
@@ -9,6 +9,8 @@ const urlsToCache = [
   new URL('icon-512.png', self.location).href,
   new URL('axis-p1.svg', self.location).href,
   new URL('axis-p2.svg', self.location).href,
+  new URL('axis-up.svg', self.location).href,
+  new URL('axis-down.svg', self.location).href,
   new URL('overground.svg', self.location).href,
   new URL('southern.svg', self.location).href
 ];

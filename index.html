@@ -27,7 +27,7 @@
             --pill-radius: clamp(4px, 0.6vw, 8px);
             --stem-height: clamp(10px, 1.25vw, 16px);
             --stem-dot: clamp(10px, 1.25vw, 16px);
-            --row-pad-top: calc(var(--pill-size) * 2 + var(--stem-height) + 24px);
+            --track-pad: calc(var(--pill-size) * 2 + var(--stem-height) + 24px);
             --time-window: 45;
         }
 
@@ -57,11 +57,27 @@
             gap: clamp(24px, 4vw, 72px);
         }
 
+        .app-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
         .station-title {
             margin: 0;
             font-size: var(--title-size);
             font-weight: 500;
             line-height: 1.2;
+        }
+
+        .live-time {
+            margin: 0;
+            font-size: var(--title-size);
+            font-weight: 500;
+            line-height: 1.2;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
         }
 
         .status {
@@ -87,13 +103,15 @@
         .platform {
             position: relative;
             width: 100%;
+            display: flex;
+            flex-direction: column;
         }
 
         .platform-label {
             position: absolute;
             bottom: calc(var(--stem-dot) / 2 + 6px);
             font-size: var(--label-size);
-            font-weight: 400;
+            font-weight: 500;
             line-height: 1;
             white-space: nowrap;
             pointer-events: none;
@@ -109,29 +127,19 @@
             text-align: right;
         }
 
-        /* Portrait uses the far-row label; hide the near-row copy */
-        .platform-label[data-for-row="far"] {
-            display: none;
-        }
-
-        .platform-rows {
-            display: flex;
-            flex-direction: column;
-            gap: clamp(36px, 5vw, 56px);
-        }
-
         .axis-track {
             position: relative;
             width: 100%;
-            padding-top: var(--row-pad-top);
-        }
-
-        /* Landscape / wide: single full 45-minute axis */
-        .axis-track[data-row="far"] {
-            display: none;
+            padding-top: var(--track-pad);
         }
 
         .axis-line {
+            display: block;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .axis-line-h {
             position: absolute;
             left: 0;
             right: 0;
@@ -139,17 +147,15 @@
             transform: translateY(50%);
             width: 100%;
             height: clamp(10px, 1.15vw, 15px);
-            display: block;
-            pointer-events: none;
-            user-select: none;
+        }
+
+        .axis-line-v {
+            display: none;
         }
 
         .trains {
             position: absolute;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            top: 0;
+            inset: 0;
             pointer-events: none;
         }
 
@@ -162,6 +168,13 @@
             gap: 4px;
             transform: translateX(-50%);
             pointer-events: auto;
+        }
+
+        .train-info {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
         }
 
         .train-minutes {
@@ -218,79 +231,180 @@
         @media (orientation: portrait) {
             :root {
                 --pill-size: clamp(22px, 10vw, 80px);
-                --label-size: clamp(13px, 3.5vw, 18px);
+                --label-size: clamp(16px, 4vw, 22px);
                 --title-size: clamp(18px, 5vw, 24px);
                 --axis-inset: 48px;
-                --row-pad-top: calc(var(--pill-size) * 2 + var(--stem-height) + 20px);
+                --stem-height: clamp(12px, 3vw, 20px);
+                --stem-dot: clamp(10px, 2.5vw, 14px);
+                --track-pad: 0;
             }
 
             .app {
-                padding: 24px 24px 40px;
-                gap: 24px;
+                padding: 24px;
+                gap: 32px;
             }
 
             .timelines {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 48px;
+                align-items: stretch;
+                justify-content: stretch;
+            }
+
+            .platform {
+                position: relative;
+                height: 100%;
+                min-height: 0;
+            }
+
+            .axis-track {
                 flex: 1;
-                gap: 0;
-                justify-content: flex-start;
+                min-height: 0;
+                padding: 0;
+                position: relative;
+                z-index: 1;
             }
 
-            /* Split leftover height: Platform 1 toward middle, Platform 2 at bottom */
-            .platform[data-platform="1"],
-            .platform[data-platform="2"] {
-                margin-top: auto;
+            .platform[data-platform="1"] .axis-track {
+                /* Axis on the right (center); pills on the outer left */
             }
 
-            .axis-track[data-row="far"] {
-                display: block;
+            .platform[data-platform="2"] .axis-track {
+                /* Axis on the left (center); pills on the outer right */
             }
 
-            .platform-label[data-for-row="near"] {
+            .axis-line-h {
                 display: none;
             }
 
-            .platform-label[data-for-row="far"] {
+            .axis-line-v {
                 display: block;
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: clamp(10px, 2.5vw, 15px);
+                height: 100%;
+                z-index: 1;
             }
 
-            .platform-rows {
-                gap: clamp(28px, 5vw, 40px);
+            .platform[data-platform="1"] .axis-line-v {
+                right: 0;
+                left: auto;
+                transform: translateX(50%);
+            }
+
+            .platform[data-platform="2"] .axis-line-v {
+                left: 0;
+                transform: translateX(-50%);
+            }
+
+            .platform-label {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                margin: 0;
+                text-align: center;
+                z-index: 0;
+            }
+
+            .platform[data-platform="1"] .platform-label {
+                left: 0;
+                right: 0;
+                top: auto;
+                bottom: 0;
+                text-align: center;
+            }
+
+            .platform[data-platform="2"] .platform-label {
+                left: 0;
+                right: 0;
+                top: 0;
+                bottom: auto;
+                text-align: center;
+            }
+
+            .trains {
+                z-index: 2;
+            }
+
+            .train {
+                bottom: auto;
+                gap: 0;
+                z-index: 2;
+            }
+
+            .train-info {
+                flex-direction: row;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .platform[data-platform="1"] .train {
+                left: auto;
+                right: 0;
+                flex-direction: row;
+                transform: translateY(-50%);
+            }
+
+            .platform[data-platform="1"] .train-info {
+                flex-direction: row;
+            }
+
+            .platform[data-platform="2"] .train {
+                left: 0;
+                right: auto;
+                flex-direction: row-reverse;
+                transform: translateY(-50%);
+            }
+
+            .platform[data-platform="2"] .train-info {
+                flex-direction: row-reverse;
+            }
+
+            .train-stem {
+                width: var(--stem-height);
+                height: 1.5px;
+            }
+
+            .platform[data-platform="1"] .train-stem::after {
+                left: 100%;
+                top: 50%;
+                transform: translate(-50%, -50%);
+            }
+
+            .platform[data-platform="2"] .train-stem::after {
+                left: 0;
+                top: 50%;
+                transform: translate(-50%, -50%);
             }
         }
     </style>
 <script defer data-domain="sydenham-station.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script></head>
 <body>
     <main class="app">
-        <h1 class="station-title">Sydenham Station</h1>
+        <header class="app-header">
+            <h1 class="station-title">Sydenham Station</h1>
+            <p class="live-time" id="live-time" aria-live="polite"></p>
+        </header>
         <div id="status" class="status" hidden></div>
         <div class="timelines" id="timelines" aria-live="polite">
             <section class="platform" data-platform="1" aria-label="Platform 1">
-                <div class="platform-rows">
-                    <div class="axis-track" data-row="near">
-                        <div class="platform-label" data-for-row="near">Platform 1</div>
-                        <div class="trains" data-trains="1" data-row="near"></div>
-                        <img class="axis-line" src="axis-p1.svg" alt="" aria-hidden="true">
-                    </div>
-                    <div class="axis-track" data-row="far">
-                        <div class="platform-label" data-for-row="far">Platform 1</div>
-                        <div class="trains" data-trains="1" data-row="far"></div>
-                        <img class="axis-line" src="axis-p1.svg" alt="" aria-hidden="true">
-                    </div>
+                <div class="axis-track">
+                    <div class="trains" data-trains="1"></div>
+                    <img class="axis-line axis-line-h" src="axis-p1.svg" alt="" aria-hidden="true">
+                    <img class="axis-line axis-line-v" src="axis-up.svg" alt="" aria-hidden="true">
                 </div>
+                <div class="platform-label">Platform 1</div>
             </section>
             <section class="platform" data-platform="2" aria-label="Platform 2">
-                <div class="platform-rows">
-                    <div class="axis-track" data-row="near">
-                        <div class="platform-label" data-for-row="near">Platform 2</div>
-                        <div class="trains" data-trains="2" data-row="near"></div>
-                        <img class="axis-line" src="axis-p2.svg" alt="" aria-hidden="true">
-                    </div>
-                    <div class="axis-track" data-row="far">
-                        <div class="platform-label" data-for-row="far">Platform 2</div>
-                        <div class="trains" data-trains="2" data-row="far"></div>
-                        <img class="axis-line" src="axis-p2.svg" alt="" aria-hidden="true">
-                    </div>
+                <div class="axis-track">
+                    <div class="trains" data-trains="2"></div>
+                    <img class="axis-line axis-line-h" src="axis-p2.svg" alt="" aria-hidden="true">
+                    <img class="axis-line axis-line-v" src="axis-down.svg" alt="" aria-hidden="true">
                 </div>
+                <div class="platform-label">Platform 2</div>
             </section>
         </div>
     </main>
@@ -309,8 +423,8 @@
         }
 
         const statusEl = document.getElementById('status');
+        const liveTimeEl = document.getElementById('live-time');
         const TIME_WINDOW_MIN = 45;
-        const SPLIT_MIN = TIME_WINDOW_MIN / 2;
         const TFL_ARRIVALS_URL = 'https://api.tfl.gov.uk/StopPoint/910GSYDENHM/Arrivals?lineId=windrush';
         const NATIONAL_RAIL_URL = 'https://national-rail-api.davwheat.dev/departures/SYD/20';
         const portraitQuery = window.matchMedia('(orientation: portrait)');
@@ -400,61 +514,43 @@
                 .sort((a, b) => a.minutes - b.minutes);
 
             for (const platform of ['1', '2']) {
-                const platformTrains = visible.filter(d => d.platform === platform);
-
-                if (!portrait) {
-                    fillRow(platform, 'near', platformTrains, portrait);
-                    fillRow(platform, 'far', [], portrait);
-                    continue;
-                }
-
-                const near = platformTrains.filter(d => d.minutes <= SPLIT_MIN);
-                const far = platformTrains.filter(d => d.minutes > SPLIT_MIN);
-                fillRow(platform, 'near', near, portrait);
-                fillRow(platform, 'far', far, portrait);
+                const el = document.querySelector(`[data-trains="${platform}"]`);
+                if (!el) continue;
+                el.innerHTML = visible
+                    .filter(d => d.platform === platform)
+                    .map(d => trainMarkup(d, portrait))
+                    .join('');
             }
         }
 
-        function fillRow(platform, row, trains, portrait) {
-            const el = document.querySelector(`[data-trains="${platform}"][data-row="${row}"]`);
-            if (!el) return;
-            el.innerHTML = trains.map(d => trainMarkup(d, row, portrait)).join('');
-        }
-
-        function trainMarkup(departure, row, portrait) {
+        function trainMarkup(departure, portrait) {
             const initials = destinationInitials(departure.destination);
-            const left = positionPercent(departure.minutes, departure.platform, row, portrait);
+            const pos = positionPercent(departure.minutes, departure.platform, portrait);
             const title = `${departure.destination} · ${departure.minutes} min · ${departure.operator}`;
+            const style = portrait ? `top: ${pos}%` : `left: ${pos}%`;
 
-            return `<article class="train" data-operator="${departure.operator}" style="left: ${left}%" title="${escapeAttr(title)}">
-                <p class="train-minutes">${departure.minutes}</p>
-                <p class="train-pill">${escapeHtml(initials)}</p>
+            return `<article class="train" data-operator="${departure.operator}" style="${style}" title="${escapeAttr(title)}">
+                <div class="train-info">
+                    <p class="train-minutes">${departure.minutes}</p>
+                    <p class="train-pill">${escapeHtml(initials)}</p>
+                </div>
                 <div class="train-stem" aria-hidden="true"></div>
             </article>`;
         }
 
-        function positionPercent(minutes, platform, row, portrait) {
+        function positionPercent(minutes, platform, portrait) {
             const clamped = Math.max(0, Math.min(TIME_WINDOW_MIN, minutes));
+            const t = clamped / TIME_WINDOW_MIN;
 
-            if (!portrait) {
-                return axisPercent(clamped, 0, TIME_WINDOW_MIN, platform);
+            if (portrait) {
+                // P1: 0 at top. P2: 0 at bottom.
+                if (platform === '1') return t * 100;
+                return (1 - t) * 100;
             }
 
-            if (row === 'near') {
-                return axisPercent(clamped, 0, SPLIT_MIN, platform);
-            }
-
-            return axisPercent(clamped, SPLIT_MIN, TIME_WINDOW_MIN, platform);
-        }
-
-        function axisPercent(minutes, minBound, maxBound, platform) {
-            const span = maxBound - minBound;
-            const offset = Math.max(0, Math.min(span, minutes - minBound));
-            // Platform 1: 0 (minBound) at the right arrow. Platform 2: 0 at the left arrow.
-            if (platform === '1') {
-                return ((span - offset) / span) * 100;
-            }
-            return (offset / span) * 100;
+            // Landscape: P1 0 at right, P2 0 at left.
+            if (platform === '1') return (1 - t) * 100;
+            return t * 100;
         }
 
         function destinationInitials(name) {
@@ -539,8 +635,18 @@
             portraitQuery.addListener(onOrientationChange);
         }
 
+        function updateLiveTime() {
+            liveTimeEl.textContent = new Intl.DateTimeFormat('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            }).format(new Date());
+        }
+
         fetchDepartures();
         setInterval(fetchDepartures, 60000);
+        updateLiveTime();
+        setInterval(updateLiveTime, 15000);
     </script>
 </body>
 </html>
