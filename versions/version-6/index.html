@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tube Timer — Twin Tracks</title>
+    <meta name="theme-color" content="#050607">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+<script defer data-domain="sydenham-station.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script></head>
+<body>
+    <main class="app">
+        <header class="header">
+            <p class="eyebrow">Sydenham</p>
+            <p class="live-time" id="live-time"></p>
+        </header>
+        <div id="status" class="status" hidden></div>
+        <div class="tracks" aria-live="polite">
+            <section class="track" data-platform="1" aria-label="Platform 1">
+                <h2 class="track-label">Platform 1</h2>
+                <div class="track-rail">
+                    <div class="rail-line" aria-hidden="true"></div>
+                    <div class="rail-now"><span>now</span></div>
+                    <div class="rail-trains" data-trains="1"></div>
+                </div>
+            </section>
+            <section class="track" data-platform="2" aria-label="Platform 2">
+                <h2 class="track-label">Platform 2</h2>
+                <div class="track-rail">
+                    <div class="rail-line" aria-hidden="true"></div>
+                    <div class="rail-now"><span>now</span></div>
+                    <div class="rail-trains" data-trains="2"></div>
+                </div>
+            </section>
+        </div>
+    </main>
+    <script src="app.js"></script>
+</body>
+</html>

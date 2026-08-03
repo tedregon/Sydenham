@@ -1,0 +1,262 @@
+/* Version 3 — Quiet Type
+   OLED-friendly typography board. Minutes lead; everything else stays quiet. */
+
+:root {
+    --bg: #050505;
+    --ink: #9a9a9a;
+    --ink-dim: #4a4a4a;
+    --ink-soft: #6e6e6e;
+    --overground: #b87a3a;
+    --southern: #3d7a6e;
+    --rule: #1a1a1a;
+    --label-size: clamp(12px, 1.4vw, 18px);
+    --card-gap: clamp(12px, 2vw, 28px);
+    --page-pad: clamp(24px, 5vw, 64px);
+    --platform-gap: clamp(32px, 6vw, 80px);
+    --label-gap: 12px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    margin: 0;
+    font-family: "IBM Plex Mono", monospace;
+    background: var(--bg);
+    color: var(--ink);
+}
+
+.app {
+    height: 100%;
+    height: 100dvh;
+    padding: var(--page-pad);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+}
+
+.status {
+    margin: 0;
+    flex: 0 0 auto;
+    font-size: var(--label-size);
+    color: var(--ink-soft);
+}
+
+.status.error {
+    color: #8a4545;
+}
+
+.platforms {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--platform-gap);
+}
+
+.platform {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--label-gap);
+}
+
+.platform-label {
+    margin: 0;
+    flex: 0 0 auto;
+    font-size: var(--label-size);
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    line-height: 1;
+}
+
+.platform[data-platform="2"] .platform-label {
+    order: 1;
+}
+
+.trains {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: var(--card-gap);
+    width: 100%;
+}
+
+.platform[data-platform="2"] .trains {
+    order: 0;
+}
+
+.train {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0;
+    position: relative;
+    container-type: size;
+}
+
+.train::after {
+    content: "";
+    position: absolute;
+    right: calc(var(--card-gap) / -2);
+    top: 12%;
+    bottom: 12%;
+    width: 1px;
+    background: var(--rule);
+}
+
+.train:last-child::after,
+.train-empty::after {
+    display: none;
+}
+
+.train-empty {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.train-half {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 0;
+}
+
+.train-minutes {
+    flex: 1.4 1 0;
+}
+
+.train-dest {
+    flex: 0.7 1 0;
+    border-top: 1px solid var(--rule);
+    padding-top: 8px;
+    margin-top: 4px;
+}
+
+.train[data-operator="overground"] .train-dest {
+    color: var(--overground);
+}
+
+.train[data-operator="southern"] .train-dest {
+    color: var(--southern);
+}
+
+.train-value {
+    margin: 0;
+    font-weight: 500;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.train-minutes .train-value {
+    font-size: clamp(28px, 55cqmin, 96px);
+    font-weight: 500;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+
+.train-dest .train-value {
+    font-size: clamp(14px, 22cqmin, 32px);
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    opacity: 0.9;
+}
+
+.platform[data-platform="1"] .train-minutes,
+.platform[data-platform="2"] .train-minutes {
+    order: 0;
+}
+
+.platform[data-platform="1"] .train-dest,
+.platform[data-platform="2"] .train-dest {
+    order: 1;
+}
+
+@media (orientation: portrait) {
+    :root {
+        --label-size: clamp(12px, 3.5vw, 16px);
+        --page-pad: 20px;
+        --platform-gap: 20px;
+        --card-gap: 10px;
+    }
+
+    .platforms {
+        flex-direction: row;
+    }
+
+    .platform[data-platform="2"] .platform-label {
+        order: 0;
+    }
+
+    .platform[data-platform="2"] .trains {
+        order: 1;
+    }
+
+    .trains {
+        flex-direction: column;
+    }
+
+    .train {
+        flex-direction: row;
+        align-items: center;
+        width: 100%;
+        height: auto;
+        gap: 12px;
+    }
+
+    .train::after {
+        right: 8%;
+        left: 8%;
+        top: auto;
+        bottom: calc(var(--card-gap) / -2);
+        width: auto;
+        height: 1px;
+    }
+
+    .train-minutes {
+        flex: 0 0 42%;
+        justify-content: flex-end;
+    }
+
+    .train-dest {
+        flex: 1 1 0;
+        justify-content: flex-start;
+        border-top: none;
+        border-left: 1px solid var(--rule);
+        padding-top: 0;
+        padding-left: 12px;
+        margin-top: 0;
+    }
+
+    .platform[data-platform="1"] .train-minutes,
+    .platform[data-platform="2"] .train-minutes {
+        order: 0;
+    }
+
+    .platform[data-platform="1"] .train-dest,
+    .platform[data-platform="2"] .train-dest {
+        order: 1;
+    }
+}

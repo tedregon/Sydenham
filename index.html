@@ -18,8 +18,7 @@
             --bg: #111111;
             --overground: #ffa748;
             --southern: #26907f;
-            --axis-inset: clamp(16px, 6.25vw, 80px);
-            --title-size: clamp(18px, 2.35vw, 30px);
+            --axis-inset: clamp(16px, 3.25vw, 80px);
             --label-size: clamp(14px, 1.7vw, 22px);
             --pill-size: clamp(28px, 5.3vw, 68px);
             --pill-pad-x: clamp(4px, 0.8vw, 10px);
@@ -51,33 +50,10 @@
         .app {
             min-height: 100vh;
             min-height: 100dvh;
-            padding: clamp(24px, 9vw, 120px) var(--axis-inset) clamp(32px, 6vw, 80px);
+            padding: clamp(24px, 0vw, 120px) var(--axis-inset) clamp(32px, 0vw, 80px);
             display: flex;
             flex-direction: column;
             gap: clamp(24px, 4vw, 72px);
-        }
-
-        .app-header {
-            display: flex;
-            align-items: baseline;
-            justify-content: space-between;
-            gap: 16px;
-        }
-
-        .station-title {
-            margin: 0;
-            font-size: var(--title-size);
-            font-weight: 500;
-            line-height: 1.2;
-        }
-
-        .live-time {
-            margin: 0;
-            font-size: var(--title-size);
-            font-weight: 500;
-            line-height: 1.2;
-            white-space: nowrap;
-            font-variant-numeric: tabular-nums;
         }
 
         .status {
@@ -96,7 +72,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-evenly;
-            gap: clamp(40px, 6vw, 96px);
+            gap: clamp(40px, 4vw, 96px);
             min-height: 0;
         }
 
@@ -179,7 +155,7 @@
 
         .train-minutes {
             margin: 0;
-            font-size: var(--pill-size);
+            font-size: calc(var(--pill-size) * var(--train-scale, 1));
             font-weight: 500;
             line-height: 1;
             text-align: center;
@@ -189,9 +165,9 @@
 
         .train-pill {
             margin: 0;
-            padding: var(--pill-pad-y) var(--pill-pad-x);
-            border-radius: var(--pill-radius);
-            font-size: var(--pill-size);
+            padding: calc(var(--pill-pad-y) * var(--train-scale, 1)) calc(var(--pill-pad-x) * var(--train-scale, 1));
+            border-radius: calc(var(--pill-radius) * var(--train-scale, 1));
+            font-size: calc(var(--pill-size) * var(--train-scale, 1));
             font-weight: 500;
             line-height: 1;
             text-align: center;
@@ -232,7 +208,6 @@
             :root {
                 --pill-size: clamp(22px, 10vw, 80px);
                 --label-size: clamp(16px, 4vw, 22px);
-                --title-size: clamp(18px, 5vw, 24px);
                 --axis-inset: 48px;
                 --stem-height: clamp(12px, 3vw, 20px);
                 --stem-dot: clamp(10px, 2.5vw, 14px);
@@ -384,10 +359,6 @@
 <script defer data-domain="sydenham-station.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script></head>
 <body>
     <main class="app">
-        <header class="app-header">
-            <h1 class="station-title">Sydenham Station</h1>
-            <p class="live-time" id="live-time" aria-live="polite"></p>
-        </header>
         <div id="status" class="status" hidden></div>
         <div class="timelines" id="timelines" aria-live="polite">
             <section class="platform" data-platform="1" aria-label="Platform 1">
@@ -423,7 +394,6 @@
         }
 
         const statusEl = document.getElementById('status');
-        const liveTimeEl = document.getElementById('live-time');
         const TIME_WINDOW_MIN = 45;
         const COLLISION_GAP_PX = 4;
         const TFL_ARRIVALS_URL = 'https://api.tfl.gov.uk/StopPoint/910GSYDENHM/Arrivals?lineId=windrush';
@@ -528,8 +498,9 @@
         function trainMarkup(departure, portrait) {
             const initials = destinationInitials(departure.destination);
             const pos = positionPercent(departure.minutes, departure.platform, portrait);
+            const scale = trainScale(departure.minutes);
             const title = `${departure.destination} · ${departure.minutes} min · ${departure.operator}`;
-            const style = portrait ? `top: ${pos}%` : `left: ${pos}%`;
+            const style = `--train-scale: ${scale}; ${portrait ? `top: ${pos}%` : `left: ${pos}%`}`;
 
             return `<article class="train" data-operator="${departure.operator}" data-minutes="${departure.minutes}" style="${style}" title="${escapeAttr(title)}">
                 <div class="train-info">
@@ -538,6 +509,12 @@
                 </div>
                 <div class="train-stem" aria-hidden="true"></div>
             </article>`;
+        }
+
+        // 50% at 45 min → 100% at 1 min
+        function trainScale(minutes) {
+            const clamped = Math.max(1, Math.min(TIME_WINDOW_MIN, minutes));
+            return 1 - 0.5 * ((clamped - 1) / (TIME_WINDOW_MIN - 1));
         }
 
         function positionPercent(minutes, platform, portrait) {
@@ -701,18 +678,8 @@
             });
         }
 
-        function updateLiveTime() {
-            liveTimeEl.textContent = new Intl.DateTimeFormat('en-GB', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            }).format(new Date());
-        }
-
         fetchDepartures();
         setInterval(fetchDepartures, 60000);
-        updateLiveTime();
-        setInterval(updateLiveTime, 15000);
     </script>
 </body>
 </html>

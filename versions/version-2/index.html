@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tube Timer</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="Sydenham">
+    <meta name="theme-color" content="#1e1e1e">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+<script defer data-domain="sydenham-station.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script></head>
+<body>
+    <main class="app">
+        <div id="status" class="status" hidden></div>
+        <div class="platforms" id="platforms" aria-live="polite">
+            <section class="platform" data-platform="1" aria-label="Platform 1">
+                <h2 class="platform-label">Platform 1</h2>
+                <div class="trains" data-trains="1"></div>
+            </section>
+            <section class="platform" data-platform="2" aria-label="Platform 2">
+                <h2 class="platform-label">Platform 2</h2>
+                <div class="trains" data-trains="2"></div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const SLOT_COUNT = 8;
+        const TFL_ARRIVALS_URL = 'https://api.tfl.gov.uk/StopPoint/910GSYDENHM/Arrivals?lineId=windrush';
+        const NATIONAL_RAIL_URL = 'https://national-rail-api.davwheat.dev/departures/SYD/50';
+
+        let latestDepartures = [];
+
+        async function fetchDepartures() {
+            const [overgroundResult, southernResult] = await Promise.allSettled([
+                fetchOvergroundDepartures(),
+                fetchSouthernDepartures()
+            ]);
+
+            const overground = overgroundResult.status === 'fulfilled' ? overgroundResult.value : [];
+            const southern = southernResult.status === 'fulfilled' ? southernResult.value : [];
+
+            if (overgroundResult.status === 'rejected' && southernResult.status === 'rejected') {
+                setStatus('Error fetching departure data. Please try again later.', true);
+                latestDepartures = [];
+                renderTrains([]);
+                return;
+            }
+
+            setStatus('');
+            latestDepartures = [...overground, ...southern];
+            renderTrains(latestDepartures);
+        }
+
+        async function fetchOvergroundDepartures() {
+            const response = await fetch(TFL_ARRIVALS_URL);
+            if (!response.ok) {
+                throw new Error('TfL response was not ok');
+            }
+
+            const data = await response.json();
+            return data
+                .filter(departure => (departure.lineId || '').toLowerCase() === 'windrush')
+                .map(departure => ({
+                    operator: 'overground',
+                    platform: parsePlatform(departure.platformName)
+                        || inferOvergroundPlatform(departure.direction, departure.destinationName),
+                    destination: cleanDestination(departure.destinationName),
+                    expectedArrival: new Date(departure.expectedArrival),
+                    cancelled: false
+                }))
+                .filter(departure => departure.platform);
+        }
+
+        async function fetchSouthernDepartures() {
+            const response = await fetch(NATIONAL_RAIL_URL);
+            if (!response.ok) {
+                throw new Error('National Rail response was not ok');
+            }
+
+            const data = await response.json();
+            const services = data.trainServices || [];
+
+            return services
+                .filter(service => service.operatorCode === 'SN')
+                .map(service => {
+                    const cancelled = Boolean(service.isCancelled) || service.etd === 'Cancelled';
+                    const destination = cleanDestination(service.destination?.[0]?.locationName);
+                    const expectedArrival = cancelled ? null : parseBoardTime(service.etd, service.std);
+
+                    return {
+                        operator: 'southern',
+                        platform: parsePlatform(service.platform) || inferSouthernPlatform(destination),
+                        destination,
+                        expectedArrival,
+                        cancelled,
+                        delayed: service.etd === 'Delayed'
+                    };
+                })
+                .filter(service => service.destination && service.platform);
+        }
+
+        function renderTrains(departures) {
+            const now = Date.now();
+            const upcoming = departures
+                .filter(d => !d.cancelled && d.expectedArrival && (d.platform === '1' || d.platform === '2'))
+                .map(d => {
+                    const minutes = Math.max(0, Math.floor((d.expectedArrival.getTime() - now) / 60000));
+                    return { ...d, minutes };
+                })
+                .filter(d => d.expectedArrival.getTime() >= now)
+                .sort((a, b) => a.minutes - b.minutes || a.expectedArrival - b.expectedArrival);
+
+            for (const platform of ['1', '2']) {
+                const el = document.querySelector(`[data-trains="${platform}"]`);
+                if (!el) continue;
+
+                const platformTrains = upcoming
+                    .filter(d => d.platform === platform)
+                    .slice(0, SLOT_COUNT);
+
+                const slots = Array.from({ length: SLOT_COUNT }, (_, i) => platformTrains[i] || null);
+                el.innerHTML = slots.map(trainMarkup).join('');
+            }
+        }
+
+        function trainMarkup(departure) {
+            if (!departure) {
+                return `<article class="train train-empty" aria-hidden="true"></article>`;
+            }
+
+            const initials = destinationInitials(departure.destination);
+            const title = `${departure.destination} · ${departure.minutes} min · ${departure.operator}`;
+
+            return `<article class="train" data-operator="${departure.operator}" data-minutes="${departure.minutes}" title="${escapeAttr(title)}">
+                <div class="train-half train-dest">
+                    <p class="train-value">${escapeHtml(initials)}</p>
+                </div>
+                <div class="train-half train-minutes">
+                    <p class="train-value">${departure.minutes}</p>
+                </div>
+            </article>`;
+        }
+
+        function destinationInitials(name) {
+            const skip = new Set(['and', 'the', '&', 'via', 'rail', 'station']);
+            const words = String(name)
+                .split(/[\s\-/]+/)
+                .map(w => w.replace(/[^A-Za-z]/g, ''))
+                .filter(w => w && !skip.has(w.toLowerCase()));
+
+            if (words.length === 0) return '??';
+            if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+            return (words[0][0] + words[1][0]).toUpperCase();
+        }
+
+        function parsePlatform(platform) {
+            if (platform === null || platform === undefined || platform === '') {
+                return null;
+            }
+
+            const match = String(platform).match(/(\d+)/);
+            if (!match) return null;
+            if (match[1] === '1' || match[1] === '2') return match[1];
+            return null;
+        }
+
+        // TfL often omits platform for later predictions; Sydenham Windrush is
+        // inbound → Platform 1, outbound → Platform 2.
+        function inferOvergroundPlatform(direction, destination) {
+            const dir = String(direction || '').toLowerCase();
+            if (dir === 'inbound') return '1';
+            if (dir === 'outbound') return '2';
+
+            const dest = String(destination || '').toLowerCase();
+            if (dest.includes('highbury')) return '1';
+            if (dest.includes('croydon') || dest.includes('crystal palace')) return '2';
+            return null;
+        }
+
+        // National Rail often omits platform further down the board.
+        function inferSouthernPlatform(destination) {
+            const dest = String(destination || '').toLowerCase();
+            if (dest.includes('london bridge')) return '1';
+            if (dest.includes('victoria')) return '2';
+            return null;
+        }
+
+        function parseBoardTime(etd, std) {
+            const time = etd && /^\d{2}:\d{2}$/.test(etd) ? etd : std;
+            if (!time || !/^\d{2}:\d{2}$/.test(time)) {
+                return null;
+            }
+
+            const [hours, minutes] = time.split(':').map(Number);
+            const expected = new Date();
+            expected.setSeconds(0, 0);
+            expected.setHours(hours, minutes, 0, 0);
+
+            const now = new Date();
+            if (expected.getTime() < now.getTime() - 30 * 60000) {
+                expected.setDate(expected.getDate() + 1);
+            }
+
+            return expected;
+        }
+
+        function cleanDestination(name) {
+            if (!name) return '';
+            return name.replace(/\s+Rail Station$/i, '');
+        }
+
+        function setStatus(message, isError = false) {
+            if (!message) {
+                statusEl.hidden = true;
+                statusEl.textContent = '';
+                statusEl.classList.remove('error');
+                return;
+            }
+            statusEl.hidden = false;
+            statusEl.textContent = message;
+            statusEl.classList.toggle('error', isError);
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function escapeAttr(value) {
+            return escapeHtml(value).replace(/'/g, '&#39;');
+        }
+
+        fetchDepartures();
+        setInterval(fetchDepartures, 60000);
+    </script>
+</body>
+</html>

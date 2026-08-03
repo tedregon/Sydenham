@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tube Timer — Orbit</title>
+    <meta name="theme-color" content="#040506">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+<script defer data-domain="sydenham-station.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script></head>
+<body>
+    <main class="app">
+        <div id="status" class="status" hidden></div>
+        <div class="orbit" id="orbit" aria-live="polite">
+            <div class="orbit-rings" aria-hidden="true">
+                <div class="ring ring-a"></div>
+                <div class="ring ring-b"></div>
+                <div class="ring ring-c"></div>
+                <div class="axis axis-v"></div>
+                <div class="axis axis-h"></div>
+            </div>
+            <div class="hub">
+                <p class="hub-time" id="live-time"></p>
+                <p class="hub-label">now</p>
+            </div>
+            <p class="wing-label wing-left">Platform 1</p>
+            <p class="wing-label wing-right">Platform 2</p>
+            <div class="blips" id="blips"></div>
+        </div>
+        <p class="legend">Closer to centre = sooner · Colour = operator</p>
+    </main>
+    <script src="app.js"></script>
+</body>
+</html>
