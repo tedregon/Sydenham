@@ -425,6 +425,7 @@
         const statusEl = document.getElementById('status');
         const liveTimeEl = document.getElementById('live-time');
         const TIME_WINDOW_MIN = 45;
+        const COLLISION_GAP_PX = 4;
         const TFL_ARRIVALS_URL = 'https://api.tfl.gov.uk/StopPoint/910GSYDENHM/Arrivals?lineId=windrush';
         const NATIONAL_RAIL_URL = 'https://national-rail-api.davwheat.dev/departures/SYD/20';
         const portraitQuery = window.matchMedia('(orientation: portrait)');
@@ -520,6 +521,7 @@
                     .filter(d => d.platform === platform)
                     .map(d => trainMarkup(d, portrait))
                     .join('');
+                resolveCollisions(el, platform, portrait);
             }
         }
 
@@ -529,7 +531,7 @@
             const title = `${departure.destination} · ${departure.minutes} min · ${departure.operator}`;
             const style = portrait ? `top: ${pos}%` : `left: ${pos}%`;
 
-            return `<article class="train" data-operator="${departure.operator}" style="${style}" title="${escapeAttr(title)}">
+            return `<article class="train" data-operator="${departure.operator}" data-minutes="${departure.minutes}" style="${style}" title="${escapeAttr(title)}">
                 <div class="train-info">
                     <p class="train-minutes">${departure.minutes}</p>
                     <p class="train-pill">${escapeHtml(initials)}</p>
@@ -551,6 +553,54 @@
             // Landscape: P1 0 at right, P2 0 at left.
             if (platform === '1') return (1 - t) * 100;
             return t * 100;
+        }
+
+        // When two train markers overlap, push the later arrival further from "now"
+        // along the timeline so pills and minute labels stay readable.
+        function resolveCollisions(container, platform, portrait) {
+            const trains = Array.from(container.querySelectorAll('.train'));
+            if (trains.length < 2) return;
+
+            const containerRect = container.getBoundingClientRect();
+            const axisSize = portrait ? containerRect.height : containerRect.width;
+            if (axisSize <= 0) return;
+
+            const prop = portrait ? 'top' : 'left';
+            // +1 means increasing the CSS % moves further from "now".
+            const awaySign = portrait
+                ? (platform === '1' ? 1 : -1)
+                : (platform === '1' ? -1 : 1);
+
+            for (let i = 1; i < trains.length; i++) {
+                const prevRect = trains[i - 1].getBoundingClientRect();
+                const curr = trains[i];
+                const currRect = curr.getBoundingClientRect();
+
+                if (!rectsOverlap(prevRect, currRect, COLLISION_GAP_PX)) continue;
+
+                const overlapPx = portrait
+                    ? (awaySign > 0
+                        ? prevRect.bottom + COLLISION_GAP_PX - currRect.top
+                        : currRect.bottom + COLLISION_GAP_PX - prevRect.top)
+                    : (awaySign > 0
+                        ? prevRect.right + COLLISION_GAP_PX - currRect.left
+                        : currRect.right + COLLISION_GAP_PX - prevRect.left);
+
+                if (overlapPx <= 0) continue;
+
+                const current = parseFloat(curr.style[prop]) || 0;
+                const next = current + awaySign * (overlapPx / axisSize) * 100;
+                curr.style[prop] = `${next}%`;
+            }
+        }
+
+        function rectsOverlap(a, b, gap = 0) {
+            return !(
+                a.right + gap <= b.left ||
+                a.left >= b.right + gap ||
+                a.bottom + gap <= b.top ||
+                a.top >= b.bottom + gap
+            );
         }
 
         function destinationInitials(name) {
@@ -629,10 +679,26 @@
             renderTrains(latestDepartures);
         }
 
+        let resizeTimer = 0;
+        function onViewportChange() {
+            window.clearTimeout(resizeTimer);
+            resizeTimer = window.setTimeout(() => {
+                renderTrains(latestDepartures);
+            }, 100);
+        }
+
         if (typeof portraitQuery.addEventListener === 'function') {
             portraitQuery.addEventListener('change', onOrientationChange);
         } else if (typeof portraitQuery.addListener === 'function') {
             portraitQuery.addListener(onOrientationChange);
+        }
+
+        window.addEventListener('resize', onViewportChange);
+
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => {
+                if (latestDepartures.length) renderTrains(latestDepartures);
+            });
         }
 
         function updateLiveTime() {
