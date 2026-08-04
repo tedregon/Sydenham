@@ -527,9 +527,8 @@
                 return (1 - t) * 100;
             }
 
-            // Landscape: P1 0 at right, P2 0 at left.
-            if (platform === '1') return (1 - t) * 100;
-            return t * 100;
+            // Landscape: both platforms 0 at right.
+            return (1 - t) * 100;
         }
 
         // When two train markers overlap, push the later arrival further from "now"
@@ -546,7 +545,7 @@
             // +1 means increasing the CSS % moves further from "now".
             const awaySign = portrait
                 ? (platform === '1' ? 1 : -1)
-                : (platform === '1' ? -1 : 1);
+                : -1;
 
             for (let i = 1; i < trains.length; i++) {
                 const prevRect = trains[i - 1].getBoundingClientRect();
