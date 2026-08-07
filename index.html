@@ -84,15 +84,12 @@
         }
 
         .platform-label {
-            position: absolute;
-            left: 0;
-            bottom: calc(var(--stem-dot) / 2 + 6px);
+            margin: calc(clamp(10px, 1.15vw, 15px) / 2 + 14px) 0 0;
             font-size: var(--label-size);
             font-weight: 500;
             line-height: 1;
             white-space: nowrap;
             pointer-events: none;
-            z-index: 1;
         }
 
         .axis-track {
@@ -127,6 +124,12 @@
             pointer-events: none;
         }
 
+        @property --train-scale {
+            syntax: "<number>";
+            inherits: true;
+            initial-value: 1;
+        }
+
         .train {
             position: absolute;
             bottom: 0;
@@ -136,6 +139,27 @@
             gap: 4px;
             transform: translateX(-50%);
             pointer-events: auto;
+            opacity: 1;
+            transition:
+                left 0.85s cubic-bezier(0.33, 1, 0.68, 1),
+                top 0.85s cubic-bezier(0.33, 1, 0.68, 1),
+                --train-scale 0.85s cubic-bezier(0.33, 1, 0.68, 1),
+                opacity 0.35s ease;
+        }
+
+        .train.is-leaving {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .trains.is-measuring .train {
+            transition: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .train {
+                transition: none;
+            }
         }
 
         .train-info {
@@ -372,12 +396,21 @@
 
         const statusEl = document.getElementById('status');
         const TIME_WINDOW_MIN = 45;
+        const TIME_WINDOW_MIN_VISIBLE = 2;
+        // Keep the nearest train clear of the axis arrowhead.
+        const AXIS_NEAR_INSET = 3;
         const COLLISION_GAP_PX = 4;
+        const INTRO_STAGGER_MS = 120;
+        const INTRO_DURATION_MS = 780;
         const TFL_ARRIVALS_URL = 'https://api.tfl.gov.uk/StopPoint/910GSYDENHM/Arrivals?lineId=windrush';
         const NATIONAL_RAIL_URL = 'https://national-rail-api.davwheat.dev/departures/SYD/20';
         const portraitQuery = window.matchMedia('(orientation: portrait)');
+        const reduceMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
         let latestDepartures = [];
+        let allowMotion = true;
+        let introPlayed = false;
+        let introLockUntil = 0;
 
         async function fetchDepartures() {
             const [overgroundResult, southernResult] = await Promise.allSettled([
@@ -410,6 +443,11 @@
             return data
                 .filter(departure => (departure.lineId || '').toLowerCase() === 'windrush')
                 .map(departure => ({
+                    id: `og-${departure.vehicleId || departure.id || [
+                        departure.destinationName,
+                        departure.platformName,
+                        departure.expectedArrival
+                    ].join('|')}`,
                     operator: 'overground',
                     platform: parsePlatform(departure.platformName),
                     destination: cleanDestination(departure.destinationName),
@@ -432,11 +470,17 @@
                 .map(service => {
                     const cancelled = Boolean(service.isCancelled) || service.etd === 'Cancelled';
                     const expectedArrival = cancelled ? null : parseBoardTime(service.etd, service.std);
+                    const destination = cleanDestination(service.destination?.[0]?.locationName);
 
                     return {
+                        id: `sn-${service.serviceId || service.rid || [
+                            service.std,
+                            destination,
+                            service.platform
+                        ].join('|')}`,
                         operator: 'southern',
                         platform: parsePlatform(service.platform),
-                        destination: cleanDestination(service.destination?.[0]?.locationName),
+                        destination,
                         expectedArrival,
                         cancelled,
                         delayed: service.etd === 'Delayed'
@@ -449,68 +493,317 @@
             return portraitQuery.matches;
         }
 
-        function renderTrains(departures) {
+        function prefersReducedMotion() {
+            return reduceMotionQuery.matches;
+        }
+
+        function trainId(departure) {
+            return departure.id;
+        }
+
+        function renderTrains(departures, { animate = true } = {}) {
+            if (animate && Date.now() < introLockUntil) return;
+
             const now = Date.now();
             const portrait = isPortrait();
+            const shouldAnimate = animate && allowMotion && !prefersReducedMotion();
             const visible = departures
                 .filter(d => !d.cancelled && d.expectedArrival && (d.platform === '1' || d.platform === '2'))
                 .map(d => {
                     const minutes = Math.max(0, Math.floor((d.expectedArrival.getTime() - now) / 60000));
                     return { ...d, minutes };
                 })
-                .filter(d => d.minutes > 0 && d.minutes <= TIME_WINDOW_MIN)
+                .filter(d => d.minutes >= TIME_WINDOW_MIN_VISIBLE && d.minutes <= TIME_WINDOW_MIN)
                 .sort((a, b) => a.minutes - b.minutes);
+
+            const playIntro = !introPlayed && shouldAnimate && visible.length > 0;
+            const introOrder = playIntro
+                ? new Map(visible.map((d, index) => [trainId(d), index]))
+                : null;
+            let longestIntroMs = 0;
 
             for (const platform of ['1', '2']) {
                 const el = document.querySelector(`[data-trains="${platform}"]`);
                 if (!el) continue;
-                el.innerHTML = visible
-                    .filter(d => d.platform === platform)
-                    .map(d => trainMarkup(d, portrait))
-                    .join('');
-                resolveCollisions(el, platform, portrait);
+
+                const platformTrains = visible.filter(d => d.platform === platform);
+                const introMs = reconcilePlatformTrains(
+                    el,
+                    platformTrains,
+                    platform,
+                    portrait,
+                    shouldAnimate,
+                    playIntro,
+                    introOrder
+                );
+                longestIntroMs = Math.max(longestIntroMs, introMs);
+            }
+
+            if (playIntro) {
+                introPlayed = true;
+                introLockUntil = Date.now() + longestIntroMs + 80;
             }
         }
 
-        function trainMarkup(departure, portrait) {
-            const initials = destinationInitials(departure.destination);
-            const pos = positionPercent(departure.minutes, departure.platform, portrait);
-            const scale = trainScale(departure.minutes);
-            const title = `${departure.destination} · ${departure.minutes} min · ${departure.operator}`;
-            const style = `--train-scale: ${scale}; ${portrait ? `top: ${pos}%` : `left: ${pos}%`}`;
+        function reconcilePlatformTrains(container, departures, platform, portrait, animate, intro, introOrder) {
+            const existing = new Map(
+                Array.from(container.querySelectorAll('.train:not(.is-leaving)'))
+                    .map(node => [node.dataset.trainId, node])
+            );
+            const nextIds = new Set(departures.map(trainId));
+            const orderedNodes = [];
 
-            return `<article class="train" data-operator="${departure.operator}" data-minutes="${departure.minutes}" style="${style}" title="${escapeAttr(title)}">
-                <div class="train-info">
-                    <p class="train-minutes">${departure.minutes}</p>
-                    <p class="train-pill">${escapeHtml(initials)}</p>
-                </div>
-                <div class="train-stem" aria-hidden="true"></div>
-            </article>`;
+            for (const [id, node] of existing) {
+                if (!nextIds.has(id)) {
+                    leaveTrain(node);
+                }
+            }
+
+            for (const departure of departures) {
+                const id = trainId(departure);
+                let node = existing.get(id);
+                let isNew = false;
+
+                if (!node) {
+                    node = createTrainElement(departure, portrait);
+                    isNew = Boolean(animate);
+                } else {
+                    updateTrainContent(node, departure);
+                }
+
+                container.appendChild(node);
+                orderedNodes.push({ node, departure, isNew });
+            }
+
+            return applyTrainPositions(
+                container,
+                orderedNodes,
+                platform,
+                portrait,
+                animate,
+                intro,
+                introOrder
+            );
         }
 
-        // 50% at 45 min → 100% at 1 min
+        function createTrainElement(departure, portrait) {
+            const node = document.createElement('article');
+            node.className = 'train';
+            node.dataset.trainId = trainId(departure);
+            node.dataset.operator = departure.operator;
+            node.innerHTML = `
+                <div class="train-info">
+                    <p class="train-minutes"></p>
+                    <p class="train-pill"></p>
+                </div>
+                <div class="train-stem" aria-hidden="true"></div>
+            `;
+            updateTrainContent(node, departure);
+            setTrainPosition(node, departure.minutes, departure.platform, portrait);
+            return node;
+        }
+
+        function updateTrainContent(node, departure) {
+            const minutesEl = node.querySelector('.train-minutes');
+            const pillEl = node.querySelector('.train-pill');
+            const initials = destinationInitials(departure.destination);
+            const title = `${departure.destination} · ${departure.minutes} min · ${departure.operator}`;
+
+            node.dataset.minutes = String(departure.minutes);
+            node.dataset.operator = departure.operator;
+            node.style.setProperty('--train-scale', String(trainScale(departure.minutes)));
+            node.title = title;
+            if (minutesEl) minutesEl.textContent = String(departure.minutes);
+            if (pillEl) pillEl.textContent = initials;
+        }
+
+        function setTrainPosition(node, minutes, platform, portrait) {
+            const pos = positionPercent(minutes, platform, portrait);
+            if (portrait) {
+                node.style.left = '';
+                node.style.top = `${pos}%`;
+            } else {
+                node.style.top = '';
+                node.style.left = `${pos}%`;
+            }
+        }
+
+        function leaveTrain(node) {
+            if (node.classList.contains('is-leaving')) return;
+            node.classList.add('is-leaving');
+            const remove = () => {
+                if (node.isConnected) node.remove();
+            };
+            if (prefersReducedMotion()) {
+                remove();
+                return;
+            }
+            const onEnd = (event) => {
+                if (event.propertyName !== 'opacity') return;
+                node.removeEventListener('transitionend', onEnd);
+                remove();
+            };
+            node.addEventListener('transitionend', onEnd);
+            window.setTimeout(remove, 400);
+        }
+
+        function setEnterStartPosition(node, platform, portrait) {
+            if (portrait) {
+                // Slide in from the far end of the vertical axis.
+                const start = positionPercent(TIME_WINDOW_MIN, platform, true);
+                node.style.left = '';
+                node.style.top = `${start}%`;
+                return;
+            }
+
+            // Landscape: every train enters left → right into its slot.
+            node.style.top = '';
+            node.style.left = '-8%';
+        }
+
+        function clearEnterTransition(node) {
+            node.style.transitionDuration = '';
+            node.style.transitionDelay = '';
+        }
+
+        function applyTrainPositions(container, orderedNodes, platform, portrait, animate, intro, introOrder) {
+            if (!orderedNodes.length) return 0;
+
+            const snapshots = animate && !intro
+                ? orderedNodes.map(({ node, isNew }) => (
+                    isNew
+                        ? null
+                        : {
+                            left: node.style.left,
+                            top: node.style.top
+                        }
+                ))
+                : null;
+
+            container.classList.add('is-measuring');
+
+            for (const { node, departure } of orderedNodes) {
+                setTrainPosition(node, departure.minutes, platform, portrait);
+            }
+
+            resolveCollisions(container, platform, portrait);
+            void container.offsetWidth;
+
+            const targets = orderedNodes.map(({ node }) => ({
+                left: node.style.left,
+                top: node.style.top
+            }));
+
+            if (intro) {
+                for (const { node } of orderedNodes) {
+                    setEnterStartPosition(node, platform, portrait);
+                    node.style.opacity = '0';
+                    clearEnterTransition(node);
+                }
+                void container.offsetWidth;
+                container.classList.remove('is-measuring');
+
+                let maxDelay = 0;
+                orderedNodes.forEach(({ node, departure }, index) => {
+                    const staggerIndex = introOrder?.get(trainId(departure)) ?? index;
+                    const delay = staggerIndex * INTRO_STAGGER_MS;
+                    maxDelay = Math.max(maxDelay, delay);
+                    node.style.transitionDuration = `${INTRO_DURATION_MS}ms`;
+                    node.style.transitionDelay = `${delay}ms`;
+                    node.style.left = targets[index].left;
+                    node.style.top = targets[index].top;
+                    node.style.opacity = '1';
+                });
+
+                const totalMs = maxDelay + INTRO_DURATION_MS;
+                window.setTimeout(() => {
+                    orderedNodes.forEach(({ node }) => clearEnterTransition(node));
+                }, totalMs + 40);
+
+                return totalMs;
+            }
+
+            if (!animate) {
+                container.classList.remove('is-measuring');
+                return 0;
+            }
+
+            const hasEntering = orderedNodes.some(({ isNew }) => isNew);
+
+            orderedNodes.forEach(({ node, isNew }, index) => {
+                clearEnterTransition(node);
+                if (isNew) {
+                    setEnterStartPosition(node, platform, portrait);
+                    node.style.opacity = '0';
+                } else if (snapshots?.[index]) {
+                    node.style.left = snapshots[index].left;
+                    node.style.top = snapshots[index].top;
+                }
+            });
+            void container.offsetWidth;
+            container.classList.remove('is-measuring');
+
+            let enterIndex = 0;
+            let maxEnterDelay = 0;
+            orderedNodes.forEach(({ node, isNew }, index) => {
+                if (isNew) {
+                    const delay = enterIndex * INTRO_STAGGER_MS;
+                    maxEnterDelay = Math.max(maxEnterDelay, delay);
+                    enterIndex += 1;
+                    node.style.transitionDuration = `${INTRO_DURATION_MS}ms`;
+                    node.style.transitionDelay = `${delay}ms`;
+                }
+                node.style.left = targets[index].left;
+                node.style.top = targets[index].top;
+                if (isNew) node.style.opacity = '1';
+            });
+
+            if (hasEntering) {
+                window.setTimeout(() => {
+                    orderedNodes.forEach(({ node, isNew }) => {
+                        if (isNew) clearEnterTransition(node);
+                    });
+                }, maxEnterDelay + INTRO_DURATION_MS + 40);
+            }
+
+            return 0;
+        }
+
+        // 50% at 45 min → 100% at nearest visible minute
         function trainScale(minutes) {
-            const clamped = Math.max(1, Math.min(TIME_WINDOW_MIN, minutes));
-            return 1 - 0.5 * ((clamped - 1) / (TIME_WINDOW_MIN - 1));
+            const span = TIME_WINDOW_MIN - TIME_WINDOW_MIN_VISIBLE;
+            const clamped = Math.max(
+                TIME_WINDOW_MIN_VISIBLE,
+                Math.min(TIME_WINDOW_MIN, minutes)
+            );
+            return 1 - 0.5 * ((clamped - TIME_WINDOW_MIN_VISIBLE) / span);
         }
 
         function positionPercent(minutes, platform, portrait) {
-            const clamped = Math.max(0, Math.min(TIME_WINDOW_MIN, minutes));
-            const t = clamped / TIME_WINDOW_MIN;
+            const span = TIME_WINDOW_MIN - TIME_WINDOW_MIN_VISIBLE;
+            const clamped = Math.max(
+                TIME_WINDOW_MIN_VISIBLE,
+                Math.min(TIME_WINDOW_MIN, minutes)
+            );
+            const t = (clamped - TIME_WINDOW_MIN_VISIBLE) / span;
+            // t=0 at the arrow (near); leave a gap so the stem doesn't cover it.
+            const near = AXIS_NEAR_INSET;
+            const far = 100;
+            const along = near + t * (far - near);
 
             if (portrait) {
-                // Both platforms: 0 at top.
-                return t * 100;
+                // Both platforms: nearest at top (below arrow), 45 at bottom.
+                return along;
             }
 
-            // Landscape: both platforms 0 at right.
-            return (1 - t) * 100;
+            // Landscape: nearest at right (left of arrow), 45 at left.
+            return 100 - along;
         }
 
         // When two train markers overlap, push the later arrival further from "now"
         // along the timeline so pills and minute labels stay readable.
         function resolveCollisions(container, platform, portrait) {
-            const trains = Array.from(container.querySelectorAll('.train'));
+            const trains = Array.from(container.querySelectorAll('.train:not(.is-leaving)'));
             if (trains.length < 2) return;
 
             const containerRect = container.getBoundingClientRect();
@@ -628,14 +921,18 @@
         }
 
         function onOrientationChange() {
-            renderTrains(latestDepartures);
+            allowMotion = false;
+            renderTrains(latestDepartures, { animate: false });
+            window.requestAnimationFrame(() => {
+                allowMotion = true;
+            });
         }
 
         let resizeTimer = 0;
         function onViewportChange() {
             window.clearTimeout(resizeTimer);
             resizeTimer = window.setTimeout(() => {
-                renderTrains(latestDepartures);
+                renderTrains(latestDepartures, { animate: false });
             }, 100);
         }
 
@@ -649,7 +946,9 @@
 
         if (document.fonts && document.fonts.ready) {
             document.fonts.ready.then(() => {
-                if (latestDepartures.length) renderTrains(latestDepartures);
+                if (latestDepartures.length) {
+                    renderTrains(latestDepartures, { animate: false });
+                }
             });
         }
 
